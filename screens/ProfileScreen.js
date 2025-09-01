@@ -212,6 +212,7 @@ const ProfileScreen = ({ navigation, route = {} }) => {
               value={formData.displayName}
               onChangeText={(text) => handleInputChange('displayName', text)}
               placeholder="Enter your name"
+              placeholderTextColor="rgba(255, 255, 255, 0.5)"
               autoCapitalize="words"
               returnKeyType="next"
             />
@@ -220,7 +221,12 @@ const ProfileScreen = ({ navigation, route = {} }) => {
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Email</Text>
-            <TextInput style={[styles.input, { color: '#999' }]} value={formData.email} editable={false} />
+            <TextInput 
+              style={[styles.input, styles.disabledInput]} 
+              value={formData.email} 
+              editable={false} 
+              placeholderTextColor="rgba(255, 255, 255, 0.5)"
+            />
           </View>
 
           <View style={styles.formGroup}>
@@ -230,6 +236,7 @@ const ProfileScreen = ({ navigation, route = {} }) => {
               value={formData.bio}
               onChangeText={(text) => handleInputChange('bio', text)}
               placeholder="Tell us about yourself"
+              placeholderTextColor="rgba(255, 255, 255, 0.5)"
               multiline
               numberOfLines={4}
               textAlignVertical="top"
@@ -241,6 +248,7 @@ const ProfileScreen = ({ navigation, route = {} }) => {
             <TextInput
               style={[styles.input, validationErrors.phoneNumber && styles.inputError]}
               placeholder="Enter your phone number"
+              placeholderTextColor="rgba(255, 255, 255, 0.5)"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
               keyboardType="phone-pad"
@@ -304,38 +312,149 @@ const ProfileScreen = ({ navigation, route = {} }) => {
   );
 };
 
-// Add your styles here
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  scrollContainer: { padding: 20, paddingBottom: 40 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { marginBottom: 20 },
-  headerTitle: { fontSize: 22, fontFamily: 'Poppins-SemiBold', color: '#000' },
-  avatarContainer: { alignItems: 'center', marginBottom: 20 },
-  avatarButton: { borderRadius: 75, overflow: 'hidden' },
-  avatar: { width: 120, height: 120, borderRadius: 60 },
-  avatarPlaceholder: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { marginTop: 8, fontFamily: 'Poppins-Regular', color: '#666' },
-  formGroup: { marginBottom: 15 },
-  label: { fontFamily: 'Poppins-Medium', marginBottom: 5, color: '#333' },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontFamily: 'Poppins-Regular', fontSize: 16 },
-  bioInput: { height: 100 },
-  inputError: { borderColor: '#FF5A5F' },
-  errorText: { color: '#FF5A5F', marginTop: 5, fontFamily: 'Poppins-Regular' },
-  saveButton: { backgroundColor: '#4361EE', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  saveButtonDisabled: { backgroundColor: '#999' },
-  saveButtonText: { color: '#fff', fontFamily: 'Poppins-SemiBold', fontSize: 16 },
-  logoutButton: { 
-    backgroundColor: '#fff', 
-    padding: 15, 
-    borderRadius: 10, 
+  container: { 
+    flex: 1, 
+    backgroundColor: '#302b63' 
+  },
+  scrollContainer: { 
+    padding: 24, 
+    paddingBottom: 40 
+  },
+  loadingContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: '#302b63'
+  },
+  header: { 
+    marginBottom: 24,
+    paddingTop: 16
+  },
+  headerTitle: { 
+    fontSize: 28, 
+    fontFamily: 'Poppins-SemiBold', 
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: -0.5,
+  },
+  avatarContainer: { 
     alignItems: 'center', 
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#FF5A5F' 
+    marginBottom: 32 
+  },
+  avatarButton: { 
+    borderRadius: 75, 
+    overflow: 'hidden',
+    shadowColor: 'rgba(0,0,0,0.3)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  avatar: { 
+    width: 120, 
+    height: 120, 
+    borderRadius: 60 
+  },
+  avatarPlaceholder: { 
+    width: 120, 
+    height: 120, 
+    borderRadius: 60, 
+    backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)'
+  },
+  avatarText: { 
+    marginTop: 12, 
+    fontFamily: 'Poppins-Medium', 
+    color: '#a5b4fc',
+    fontSize: 14
+  },
+  formGroup: { 
+    marginBottom: 20 
+  },
+  label: { 
+    fontFamily: 'Poppins-Medium', 
+    fontSize: 14,
+    marginBottom: 8, 
+    color: '#a5b4fc',
+    marginLeft: 4
+  },
+  input: { 
+    borderWidth: 1.5, 
+    borderColor: 'rgba(255, 255, 255, 0.2)', 
+    borderRadius: 12, 
+    padding: 16, 
+    fontFamily: 'Poppins-Medium', 
+    fontSize: 16,
+    color: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: 'rgba(0,0,0,0.2)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 2,
+    height: 56
+  },
+  disabledInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    color: 'rgba(255, 255, 255, 0.6)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  bioInput: { 
+    height: 100,
+    textAlignVertical: 'top',
+    paddingTop: 16
+  },
+  inputError: { 
+    borderColor: '#ef4444' 
+  },
+  errorText: { 
+    color: '#ef4444', 
+    marginTop: 4, 
+    marginLeft: 4,
+    fontFamily: 'Poppins-Regular',
+    fontSize: 12
+  },
+  saveButton: { 
+    backgroundColor: '#6366f1', 
+    padding: 16, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 16,
+    height: 56,
+    justifyContent: 'center',
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonDisabled: { 
+    backgroundColor: 'rgba(255, 255, 255, 0.3)' 
+  },
+  saveButtonText: { 
+    color: '#fff', 
+    fontFamily: 'Poppins-SemiBold', 
+    fontSize: 16 
+  },
+  logoutButton: { 
+    backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+    padding: 16, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    height: 56,
+    justifyContent: 'center'
   },
   logoutButtonText: { 
-    color: '#FF5A5F', 
+    color: '#ef4444', 
     fontFamily: 'Poppins-SemiBold', 
     fontSize: 16 
   },

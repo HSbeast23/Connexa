@@ -27,14 +27,14 @@ const RegisterScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   // Validation states
   const [usernameError, setUsernameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
   const [phoneNumberError, setPhoneNumberError] = useState('');
-  
+
   const [fontsLoaded] = useFonts({
     'Poppins-Regular': require('../assets/fonts/Poppins-Regular.ttf'),
     'Poppins-Medium': require('../assets/fonts/Poppins-Medium.ttf'),
@@ -43,7 +43,7 @@ const RegisterScreen = ({ navigation }) => {
 
   const validateInputs = () => {
     let isValid = true;
-    
+
     // Username validation
     if (!username) {
       setUsernameError('Username is required');
@@ -54,7 +54,7 @@ const RegisterScreen = ({ navigation }) => {
     } else {
       setUsernameError('');
     }
-    
+
     // Email validation
     if (!email) {
       setEmailError('Email is required');
@@ -65,7 +65,7 @@ const RegisterScreen = ({ navigation }) => {
     } else {
       setEmailError('');
     }
-    
+
     // Password validation
     if (!password) {
       setPasswordError('Password is required');
@@ -76,7 +76,7 @@ const RegisterScreen = ({ navigation }) => {
     } else {
       setPasswordError('');
     }
-    
+
     // Confirm password validation
     if (!confirmPassword) {
       setConfirmPasswordError('Please confirm your password');
@@ -87,7 +87,7 @@ const RegisterScreen = ({ navigation }) => {
     } else {
       setConfirmPasswordError('');
     }
-    
+
     // Phone number validation
     if (!phoneNumber) {
       setPhoneNumberError('Phone number is required');
@@ -98,7 +98,7 @@ const RegisterScreen = ({ navigation }) => {
     } else {
       setPhoneNumberError('');
     }
-    
+
     return isValid;
   };
 
@@ -106,17 +106,17 @@ const RegisterScreen = ({ navigation }) => {
     if (!validateInputs()) {
       return;
     }
-    
+
     setLoading(true);
-    
+
     const { user, error } = await registerUser(email, password);
-    
+
     if (error) {
       setLoading(false);
       Alert.alert('Registration Error', error);
       return;
     }
-    
+
     if (user) {
       // Create user profile in Firestore
       const userData = {
@@ -126,20 +126,20 @@ const RegisterScreen = ({ navigation }) => {
         bio: '',
         avatarUrl: '',
       };
-      
+
       const { success, error: profileError } = await createUserProfile(user.uid, userData);
-      
+
       setLoading(false);
-      
+
       if (profileError) {
         Alert.alert('Profile Creation Error', profileError);
       } else {
         // Navigate to ProfileScreen for additional setup
         navigation.reset({
           index: 0,
-          routes: [{ 
+          routes: [{
             name: 'Profile',
-            params: { 
+            params: {
               isNewUser: true,
               displayName: username,
               email: email,
@@ -168,7 +168,7 @@ const RegisterScreen = ({ navigation }) => {
               <Text style={styles.headerTitle}>Create Account</Text>
               <Text style={styles.headerSubtitle}>Join Connexa today</Text>
             </View>
-            
+
             <View style={styles.formContainer}>
               {/* Username Input */}
               <View style={styles.inputGroup}>
@@ -188,7 +188,7 @@ const RegisterScreen = ({ navigation }) => {
                 </View>
                 {usernameError ? <Text style={styles.errorText}>{usernameError}</Text> : null}
               </View>
-              
+
               {/* Email Input */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Email</Text>
@@ -209,7 +209,7 @@ const RegisterScreen = ({ navigation }) => {
                 </View>
                 {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
               </View>
-              
+
               {/* Password Input */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Password</Text>
@@ -226,20 +226,20 @@ const RegisterScreen = ({ navigation }) => {
                       if (passwordError) setPasswordError('');
                     }}
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setShowPassword(!showPassword)}
                     style={styles.eyeIcon}
                   >
-                    <MaterialIcons 
-                      name={showPassword ? "visibility" : "visibility-off"} 
-                      size={20} 
-                      color="#666" 
+                    <MaterialIcons
+                      name={showPassword ? "visibility" : "visibility-off"}
+                      size={20}
+                      color="#666"
                     />
                   </TouchableOpacity>
                 </View>
                 {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
               </View>
-              
+
               {/* Confirm Password Input */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Re-type Password</Text>
@@ -256,20 +256,20 @@ const RegisterScreen = ({ navigation }) => {
                       if (confirmPasswordError) setConfirmPasswordError('');
                     }}
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                     style={styles.eyeIcon}
                   >
-                    <MaterialIcons 
-                      name={showConfirmPassword ? "visibility" : "visibility-off"} 
-                      size={20} 
-                      color="#666" 
+                    <MaterialIcons
+                      name={showConfirmPassword ? "visibility" : "visibility-off"}
+                      size={20}
+                      color="#666"
                     />
                   </TouchableOpacity>
                 </View>
                 {confirmPasswordError ? <Text style={styles.errorText}>{confirmPasswordError}</Text> : null}
               </View>
-              
+
               {/* Phone Number Input */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Phone Number</Text>
@@ -291,8 +291,8 @@ const RegisterScreen = ({ navigation }) => {
                 />
                 {phoneNumberError ? <Text style={styles.errorText}>{phoneNumberError}</Text> : null}
               </View>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.registerButton}
                 onPress={handleRegister}
                 disabled={loading}
@@ -304,7 +304,7 @@ const RegisterScreen = ({ navigation }) => {
                 )}
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account? </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Login')}>
@@ -321,7 +321,30 @@ const RegisterScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#302b63',
+  },
+  headerContainer: {
+    padding: 32,
+    paddingBottom: 24,
+    // backgroundColor: '#f8f9fa',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerTitle: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 28,
+    color: '#ffffff',
+    marginBottom: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    color: '#e0e0e0',
+    lineHeight: 24,
   },
   keyboardAvoid: {
     flex: 1,
@@ -330,22 +353,8 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
   },
-  headerContainer: {
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  headerTitle: {
-    fontFamily: 'Poppins-SemiBold',
-    fontSize: 28,
-    color: '#333',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-    color: '#666',
-  },
   formContainer: {
+    marginTop: 16,
     marginBottom: 20,
   },
   inputGroup: {
@@ -354,30 +363,38 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    color: '#333',
+    color: '#a5b4fc',
     marginBottom: 8,
+    marginLeft: 4,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingVertical: 2,
-    backgroundColor: '#f9f9f9',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 8,
+    height: 56,
+    shadowColor: 'rgba(0,0,0,0.2)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   inputError: {
-    borderColor: '#ff3b30',
+    borderColor: '#ef4444',
   },
   inputIcon: {
     paddingHorizontal: 12,
   },
   input: {
     flex: 1,
-    fontFamily: 'Poppins-Regular',
+    fontFamily: 'Poppins-Medium',
     fontSize: 16,
-    paddingVertical: 12,
-    color: '#333',
+    color: '#ffffff',
+    paddingHorizontal: 8,
+    height: '100%',
   },
   eyeIcon: {
     paddingHorizontal: 12,
@@ -385,43 +402,56 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 12,
-    color: '#ff3b30',
+    color: '#ef4444',
     marginTop: 4,
+    marginLeft: 4,
   },
   phoneInputContainer: {
     width: '100%',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#f9f9f9',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: 'rgba(0,0,0,0.2)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
   },
   phoneTextContainer: {
-    backgroundColor: '#f9f9f9',
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
+    backgroundColor: 'transparent',
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
     paddingVertical: 0,
+    height: 52,
   },
   phoneTextInput: {
-    fontFamily: 'Poppins-Regular',
+    fontFamily: 'Poppins-Medium',
     fontSize: 16,
-    color: '#333',
+    color: '#ffffff',
+    height: '100%',
+    backgroundColor: 'transparent',
+    paddingLeft: 16,
   },
   phoneCodeText: {
-    fontFamily: 'Poppins-Regular',
+    fontFamily: 'Poppins-Medium',
     fontSize: 16,
-    color: '#333',
+    color: '#ffffff',
+    paddingLeft: 16,
   },
   registerButton: {
-    backgroundColor: '#3498db',
-    borderRadius: 8,
-    paddingVertical: 14,
+    backgroundColor: '#6366f1',
+    borderRadius: 12,
+    height: 56,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    marginTop: 8,
   },
   registerButtonText: {
     fontFamily: 'Poppins-SemiBold',
@@ -432,18 +462,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 20,
     marginBottom: 20,
   },
   footerText: {
     fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginRight: 4,
   },
   loginText: {
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 16,
-    color: '#3498db',
+    fontSize: 15,
+    color: '#a5b4fc',
+  },
+  formContainer: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
   },
 });
 

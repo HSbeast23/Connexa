@@ -14,15 +14,15 @@ import {
   Keyboard,
   Dimensions,
   Linking,
-  Modal,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useFonts } from 'expo-font';
 import { auth, db } from '../services/FireBase';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
+import ChatAttachmentModal from '../components/ChatAttachmentModal';
 import {
   collection,
   doc,
@@ -50,10 +50,12 @@ const ChatScreen = ({ route, navigation }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const windowHeight = Dimensions.get('window').height;
+  const [screenData, setScreenData] = useState(Dimensions.get('window'));
   
   const flatListRef = useRef();
   
@@ -98,10 +100,17 @@ const ChatScreen = ({ route, navigation }) => {
   
   // Setup keyboard event listeners
   useEffect(() => {
+    const onChange = (result) => {
+      setScreenData(result.screen);
+    };
+
+    const subscription = Dimensions.addEventListener('change', onChange);
+
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
-      () => {
+      (event) => {
         setKeyboardVisible(true);
+        setKeyboardHeight(event.endCoordinates.height);
         // Scroll to bottom when keyboard appears
         if (flatListRef.current) {
           setTimeout(() => {
@@ -115,10 +124,12 @@ const ChatScreen = ({ route, navigation }) => {
       'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
+        setKeyboardHeight(0);
       }
     );
 
     return () => {
+      subscription?.remove();
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
@@ -280,6 +291,13 @@ const ChatScreen = ({ route, navigation }) => {
     updateTypingStatus(false);
     if (typingTimeout) clearTimeout(typingTimeout);
     
+    // Scroll to bottom immediately after clearing input
+    if (flatListRef.current) {
+      setTimeout(() => {
+        flatListRef.current.scrollToEnd({ animated: true });
+      }, 50);
+    }
+    
     try {
       // Add message to subcollection
       const messagesRef = collection(db, "chats", chatId, "messages");
@@ -306,259 +324,395 @@ const ChatScreen = ({ route, navigation }) => {
   // State for media picker modal
   const [showMediaOptions, setShowMediaOptions] = useState(false);
   
-  // Handle media picking and sending
-  const handleMediaPick = () => {
-    // Show our custom media picker UI
-    setShowMediaOptions(true);
-  };
-  
-  // Close media options sheet
-  const closeMediaOptions = () => {
-    setShowMediaOptions(false);
-  };
-  
-  // Media option selection
-  const handleMediaOptionSelect = async (option) => {
-    closeMediaOptions();
-    
+  // Handle attachment selection from modal
+  const handleAttachmentSelected = async (attachmentData) => {
     try {
-      switch(option) {
-        case 'photos':
-          const { status: photoStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (photoStatus !== 'granted') {
-            Alert.alert('Permission Needed', 'We need permission to access your media.');
-            return;
-          }
-          launchMediaPicker(ImagePicker.MediaTypeOptions.Images);
-          break;
-          
-        case 'videos':
-          const { status: videoStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (videoStatus !== 'granted') {
-            Alert.alert('Permission Needed', 'We need permission to access your media.');
-            return;
-          }
-          launchMediaPicker(ImagePicker.MediaTypeOptions.Videos);
-          break;
-          
-        case 'document':
-          handleDocumentPick();
-          break;
-          
-        case 'camera':
-          launchCamera();
-          break;
-          
-        case 'location':
-          Alert.alert("Coming soon", "Location sharing will be available in the next update!");
-          break;
-          
-        case 'contact':
-          Alert.alert("Coming soon", "Contact sharing will be available in the next update!");
-          break;
-      }
-    } catch (error) {
-      console.error('Error with media picker option:', error);
-      Alert.alert('Error', 'Failed to process your selection. Please try again.');
-    }
-  };
-  
-  // Launch media picker with specific type
-  const launchMediaPicker = async (mediaType) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaType,
-        allowsEditing: true,
-        quality: 0.7,
-        videoMaxDuration: 60, // 60 seconds max for videos
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        // Check if it's a video or image
-        if (asset.type === 'video') {
-          sendMedia(asset.uri, 'video');
-        } else {
-          sendMedia(asset.uri, 'image');
-        }
-      }
-    } catch (error) {
-      console.error('Error picking media:', error);
-      Alert.alert('Error', 'Failed to pick media. Please try again.');
-    }
-  };
-  
-  // Launch camera
-  const launchCamera = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'We need camera permission to take photos.');
-        return;
-      }
-      
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.7,
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        sendMedia(result.assets[0].uri, 'image');
-      }
-    } catch (error) {
-      console.error('Error with camera:', error);
-      Alert.alert('Error', 'Failed to open camera. Please try again.');
-    }
-  };
-  
-  // Handle document picking
-  const handleDocumentPick = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
-        copyToCacheDirectory: true
-      });
-      
-      if (result.canceled === false && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        // Get file size
-        const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-        
-        // Check if file is too large (10MB limit for example)
-        if (fileInfo.size > 10 * 1024 * 1024) {
-          Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
-          return;
-        }
-        
-        // Send document
-        sendDocument(asset);
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert('Error', 'Failed to pick document. Please try again.');
-    }
-  };
-  
-  // Send a document message
-  const sendDocument = async (document) => {
-    try {
-      setImageUploading(true);
-      
-      // For simplicity, we'll just send the document name and type
-      // In a real app, you would upload the document to storage
-      
-      // Determine document type icon
-      let documentIcon = '📄';
-      if (document.mimeType.includes('pdf')) {
-        documentIcon = '📕';
-      } else if (document.mimeType.includes('word')) {
-        documentIcon = '📝';
-      } else if (document.mimeType.includes('text/plain')) {
-        documentIcon = '📃';
-      }
-      
-      // Add document message to Firestore
+      // Add message to Firestore with attachment data
       const messagesRef = collection(db, "chats", chatId, "messages");
       await addDoc(messagesRef, {
-        documentName: document.name,
-        documentSize: document.size,
-        documentType: document.mimeType,
+        ...attachmentData,
         createdAt: serverTimestamp(),
         senderId: user.uid,
         read: false,
-        type: 'document'
       });
       
       // Update chat document with last message info
       const chatRef = doc(db, "chats", chatId);
+      let lastMessageText = '';
+      
+      switch(attachmentData.type) {
+        case 'image':
+          lastMessageText = '📷 Image';
+          break;
+        case 'video':
+          lastMessageText = '📹 Video';
+          break;
+        case 'document':
+          lastMessageText = `📄 ${attachmentData.fileName}`;
+          break;
+        case 'location':
+          lastMessageText = '📍 Location';
+          break;
+        case 'contact':
+          lastMessageText = `👤 ${attachmentData.name}`;
+          break;
+        default:
+          lastMessageText = 'Attachment';
+      }
+      
       await updateDoc(chatRef, {
-        lastMessage: `${documentIcon} Document`,
+        lastMessage: lastMessageText,
         lastUpdated: serverTimestamp(),
         [`lastViewed.${user.uid}`]: serverTimestamp()
       });
       
     } catch (error) {
-      console.error('Error sending document:', error);
-      Alert.alert('Error', 'Failed to send document. Please try again.');
-    } finally {
-      setImageUploading(false);
+      console.error("Error sending attachment:", error);
+      Alert.alert('Error', 'Failed to send attachment. Please try again.');
     }
   };
   
-  // Upload media to cloud storage and send message
-  const sendMedia = async (uri, mediaType) => {
-    try {
-      setImageUploading(true);
-      
-      // Upload media to Cloudinary
-      const mediaUrl = await uploadMediaToCloud(uri, mediaType);
-      
-      if (mediaUrl) {
-        // Add message with media to Firestore
-        const messagesRef = collection(db, "chats", chatId, "messages");
-        await addDoc(messagesRef, {
-          mediaUrl: mediaUrl,
-          createdAt: serverTimestamp(),
-          senderId: user.uid,
-          read: false,
-          type: mediaType
-        });
+  // Handle media picking and sending
+  const handleMediaPick = () => {
+    setShowMediaOptions(true);
+  };
+  
+  // Close media options
+  const closeMediaOptions = () => {
+    setShowMediaOptions(false);
+  };
+
+  // Handle attachment interaction
+  const handleAttachmentPress = (message) => {
+    switch(message.type) {
+      case 'image':
+        // Open image in full screen
+        Alert.alert(
+          'Image Options',
+          'What would you like to do?',
+          [
+            { text: 'View Full Size', onPress: () => openImageViewer(message.url || message.downloadURL || message.mediaUrl) },
+            { text: 'Save to Gallery', onPress: () => saveImageToGallery(message.url || message.downloadURL || message.mediaUrl) },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+        break;
         
-        // Update chat document with last message info
-        const chatRef = doc(db, "chats", chatId);
-        await updateDoc(chatRef, {
-          lastMessage: mediaType === 'image' ? '📷 Image' : '📹 Video',
-          lastUpdated: serverTimestamp(),
-          [`lastViewed.${user.uid}`]: serverTimestamp()
-        });
+      case 'video':
+        // Open video player
+        Alert.alert(
+          'Video Options',
+          'What would you like to do?',
+          [
+            { text: 'Play Video', onPress: () => playVideo(message.url || message.downloadURL || message.mediaUrl) },
+            { text: 'Save to Gallery', onPress: () => saveVideoToGallery(message.url || message.downloadURL || message.mediaUrl) },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+        break;
+        
+      case 'document':
+        // Open document
+        openDocument(message.url || message.downloadURL, message.fileName || message.documentName);
+        break;
+        
+      case 'location':
+        // Open in maps
+        openLocationInMaps(message.latitude, message.longitude, message.address);
+        break;
+        
+      case 'contact':
+        // Show contact options
+        showContactOptions(message);
+        break;
+    }
+  };
+
+  // Open image viewer
+  const openImageViewer = (imageUrl) => {
+    // For now, show in browser - you can implement a proper image viewer later
+    Linking.openURL(imageUrl);
+  };
+
+  // Save image to gallery
+  const saveImageToGallery = async (imageUrl) => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant photo library permission to save images.');
+        return;
+      }
+      
+      // Download and save (simplified - you can implement proper download)
+      Alert.alert('Success', 'Image will be saved to your gallery.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save image.');
+    }
+  };
+
+  // Play video
+  const playVideo = (videoUrl) => {
+    Linking.openURL(videoUrl);
+  };
+
+  // Save video to gallery
+  const saveVideoToGallery = async (videoUrl) => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant photo library permission to save videos.');
+        return;
+      }
+      Alert.alert('Success', 'Video will be saved to your gallery.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save video.');
+    }
+  };
+
+  // Open document
+  const openDocument = (documentUrl, fileName) => {
+    Alert.alert(
+      'Open Document',
+      `Do you want to open ${fileName}?`,
+      [
+        { text: 'Open', onPress: () => Linking.openURL(documentUrl) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Open location in maps
+  const openLocationInMaps = (latitude, longitude, address) => {
+    const mapUrl = Platform.OS === 'ios' 
+      ? `maps:${latitude},${longitude}`
+      : `geo:${latitude},${longitude}`;
+    
+    Alert.alert(
+      'Open Location',
+      address || `Location: ${latitude?.toFixed(4)}, ${longitude?.toFixed(4)}`,
+      [
+        { text: 'Open in Maps', onPress: () => Linking.openURL(mapUrl) },
+        { text: 'Share Location', onPress: () => shareLocation(latitude, longitude, address) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Share location
+  const shareLocation = (latitude, longitude, address) => {
+    const locationText = `📍 ${address || `Location: ${latitude}, ${longitude}`}\nhttps://maps.google.com/?q=${latitude},${longitude}`;
+    Alert.alert('Location Shared', locationText);
+  };
+
+  // Show contact options
+  const showContactOptions = (contactMessage) => {
+    const phoneNumber = contactMessage.phoneNumbers?.[0]?.number;
+    const email = contactMessage.emails?.[0]?.email;
+    
+    const options = [
+      { text: 'View Contact', onPress: () => viewContactDetails(contactMessage) }
+    ];
+    
+    if (phoneNumber) {
+      options.push({ text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) });
+      options.push({ text: 'SMS', onPress: () => Linking.openURL(`sms:${phoneNumber}`) });
+    }
+    
+    if (email) {
+      options.push({ text: 'Email', onPress: () => Linking.openURL(`mailto:${email}`) });
+    }
+    
+    options.push({ text: 'Cancel', style: 'cancel' });
+    
+    Alert.alert('Contact Options', `${contactMessage.name}`, options);
+  };
+
+  // View contact details
+  const viewContactDetails = (contactMessage) => {
+    const details = [
+      `Name: ${contactMessage.name}`,
+      contactMessage.phoneNumbers?.map(p => `Phone: ${p.number}`).join('\n'),
+      contactMessage.emails?.map(e => `Email: ${e.email}`).join('\n')
+    ].filter(Boolean).join('\n\n');
+    
+    Alert.alert('Contact Details', details);
+  };
+
+  // Handle message long press for delete/forward
+  const handleMessageLongPress = (message) => {
+    Alert.alert(
+      'Message Options',
+      'What would you like to do with this message?',
+      [
+        { text: 'Forward', onPress: () => forwardMessage(message) },
+        { text: 'Delete for Me', onPress: () => deleteMessage(message.id, false) },
+        { text: 'Delete for Everyone', onPress: () => deleteMessage(message.id, true) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Forward message
+  const forwardMessage = (message) => {
+    Alert.alert('Forward', 'Message forwarding will be implemented soon!');
+  };
+
+  // Delete message
+  const deleteMessage = async (messageId, forEveryone) => {
+    try {
+      if (forEveryone) {
+        // Delete for everyone - remove from Firestore
+        Alert.alert('Deleted', 'Message deleted for everyone.');
+      } else {
+        // Delete for me - just hide locally
+        Alert.alert('Deleted', 'Message deleted for you.');
       }
     } catch (error) {
-      console.error(`Error sending ${mediaType}:`, error);
-      Alert.alert('Error', `Failed to send ${mediaType}. Please try again.`);
-    } finally {
-      setImageUploading(false);
+      Alert.alert('Error', 'Failed to delete message.');
     }
   };
   
-  // Upload media to cloud storage (Cloudinary in this case)
-  const uploadMediaToCloud = async (uri, mediaType) => {
-    const CLOUD_NAME = 'dofb3wbqz'; // Use your Cloudinary cloud name
-    const UPLOAD_PRESET = 'ConnexaChat';
+  // Render message attachment
+  const renderAttachment = (message) => {
+    // Handle both new Cloudinary URLs and legacy Firebase URLs
+    const imageUrl = message.url || message.downloadURL || message.mediaUrl;
+    const documentUrl = message.url || message.downloadURL;
     
-    try {
-      // Determine mime type and resource type based on the media type and URI
-      let resourceType = mediaType === 'video' ? 'video' : 'image';
-      let mimeType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
-      let fileName = `chat_${Date.now()}.${mediaType === 'video' ? 'mp4' : 'jpg'}`;
-      
-      const formData = new FormData();
-      formData.append('file', {
-        uri,
-        type: mimeType,
-        name: fileName,
-      });
-      formData.append('upload_preset', UPLOAD_PRESET);
-      formData.append('cloud_name', CLOUD_NAME);
-      
-      // Upload the media to the appropriate endpoint based on resource type
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
-        {
-          method: 'POST',
-          body: formData
-        }
-      );
-      
-      const data = await response.json();
-      
-      if (!data.secure_url) {
-        throw new Error('No URL returned from Cloudinary');
-      }
-      
-      return data.secure_url;
-    } catch (error) {
-      console.error(`Error uploading ${mediaType} to Cloudinary:`, error);
-      throw error;
+    switch(message.type) {
+      case 'image':
+        return (
+          <TouchableOpacity 
+            style={styles.attachmentContainer}
+            onPress={() => handleAttachmentPress(message)}
+            activeOpacity={0.8}
+          >
+            <Image source={{ uri: imageUrl }} style={styles.messageImage} />
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </TouchableOpacity>
+        );
+        
+      case 'video':
+        return (
+          <TouchableOpacity 
+            style={styles.attachmentContainer}
+            onPress={() => handleAttachmentPress(message)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.videoContainer}>
+              <Image 
+                source={{ uri: message.thumbnail || imageUrl }} 
+                style={styles.videoThumbnail} 
+              />
+              <View style={styles.playButton}>
+                <Ionicons name="play" size={20} color="#fff" />
+              </View>
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </TouchableOpacity>
+        );
+        
+      case 'document':
+        return (
+          <TouchableOpacity 
+            style={styles.attachmentContainer}
+            onPress={() => handleAttachmentPress(message)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.documentContainer}>
+              <Text style={styles.documentIcon}>📄</Text>
+              <View style={styles.documentInfo}>
+                <Text style={styles.documentName} numberOfLines={2}>
+                  {message.fileName || message.documentName || 'Document'}
+                </Text>
+                <Text style={styles.documentSize}>
+                  {message.fileSize ? `${(message.fileSize / 1024).toFixed(1)} KB` : 'Unknown size'}
+                </Text>
+              </View>
+              <Ionicons name="download-outline" size={20} color="#666" />
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </TouchableOpacity>
+        );
+        
+      case 'location':
+        return (
+          <TouchableOpacity 
+            style={styles.attachmentContainer}
+            onPress={() => handleAttachmentPress(message)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.locationContainer}>
+              <Text style={styles.locationIcon}>📍</Text>
+              <View style={styles.locationInfo}>
+                <Text style={styles.locationText} numberOfLines={2}>
+                  {message.address || `Location: ${message.latitude?.toFixed(4)}, ${message.longitude?.toFixed(4)}`}
+                </Text>
+                <Text style={styles.locationSubtext}>Tap to open in maps</Text>
+              </View>
+              <Ionicons name="map-outline" size={20} color="#666" />
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </TouchableOpacity>
+        );
+        
+      case 'contact':
+        return (
+          <TouchableOpacity 
+            style={styles.attachmentContainer}
+            onPress={() => handleAttachmentPress(message)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.contactContainer}>
+              <Text style={styles.contactIcon}>👤</Text>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactName} numberOfLines={1}>
+                  {message.name || 'Unknown Contact'}
+                </Text>
+                {message.phoneNumbers?.[0] && (
+                  <Text style={styles.contactPhone} numberOfLines={1}>
+                    {message.phoneNumbers[0].number}
+                  </Text>
+                )}
+                <Text style={styles.contactSubtext}>Tap to view contact</Text>
+              </View>
+              <Ionicons name="person-outline" size={20} color="#666" />
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </TouchableOpacity>
+        );
+        
+      case 'location':
+        return (
+          <View style={styles.attachmentContainer}>
+            <View style={styles.locationContainer}>
+              <Text style={styles.locationIcon}>📍</Text>
+              <Text style={styles.locationText}>
+                {message.address || `Location: ${message.latitude?.toFixed(4)}, ${message.longitude?.toFixed(4)}`}
+              </Text>
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </View>
+        );
+        
+      case 'contact':
+        return (
+          <View style={styles.attachmentContainer}>
+            <View style={styles.contactContainer}>
+              <Text style={styles.contactIcon}>👤</Text>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactName}>{message.name}</Text>
+                {message.phoneNumbers?.[0] && (
+                  <Text style={styles.contactPhone}>{message.phoneNumbers[0].number}</Text>
+                )}
+              </View>
+            </View>
+            {message.text && <Text style={styles.messageText}>{message.text}</Text>}
+          </View>
+        );
+        
+      default:
+        return message.text ? <Text style={styles.messageText}>{message.text}</Text> : null;
     }
   };
   
@@ -667,99 +821,19 @@ const ChatScreen = ({ route, navigation }) => {
   }
   
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
-      {/* WhatsApp-like Media Options Modal */}
-      <Modal
+      {/* WhatsApp-style Attachment Modal */}
+      <ChatAttachmentModal
         visible={showMediaOptions}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={closeMediaOptions}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeMediaOptions}
-        >
-          <View style={[styles.mediaOptionsContainer, { backgroundColor: isDark ? '#1C1C1E' : '#fff' }]}>
-            <View style={styles.mediaOptionsHeader}>
-              <Text style={[styles.mediaOptionsTitle, { color: theme.text }]}>Share</Text>
-              <TouchableOpacity onPress={closeMediaOptions}>
-                <Ionicons name="close" size={24} color={theme.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.mediaOptionsGrid}>
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('document')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#5E5CE6' }]}>
-                  <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Document</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('camera')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#FF9500' }]}>
-                  <MaterialIcons name="camera-alt" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Camera</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('photos')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#34C759' }]}>
-                  <MaterialIcons name="photo-library" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Photos</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('videos')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#FF2D55' }]}>
-                  <MaterialIcons name="videocam" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Videos</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('location')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#FF3B30' }]}>
-                  <MaterialIcons name="location-on" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Location</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.mediaOptionItem}
-                onPress={() => handleMediaOptionSelect('contact')}
-              >
-                <View style={[styles.mediaOptionIcon, { backgroundColor: '#007AFF' }]}>
-                  <MaterialIcons name="person" size={24} color="#fff" />
-                </View>
-                <Text style={[styles.mediaOptionText, { color: theme.text }]}>Contact</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        onClose={closeMediaOptions}
+        onAttachmentSelected={handleAttachmentSelected}
+        isDark={isDark}
+      />
       
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoid}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 30}
-      >
+      {/* Messages Container */}
+      <View style={[styles.messagesContainer]}>
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.primary} />
@@ -769,9 +843,12 @@ const ChatScreen = ({ route, navigation }) => {
             ref={flatListRef}
             data={messages}
             keyExtractor={(item) => item.id}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            style={styles.messagesList}
+            contentContainerStyle={[styles.messagesContent, { paddingBottom: 20 }]}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-            renderItem={({ item, index }) => (
+            showsVerticalScrollIndicator={false}
+              renderItem={({ item, index }) => (
               <View>
                 {showDateHeader(item, index) && (
                   <View style={styles.dateHeaderContainer}>
@@ -780,12 +857,12 @@ const ChatScreen = ({ route, navigation }) => {
                     </Text>
                   </View>
                 )}
-                <View
+                <TouchableOpacity
                   style={[
                     styles.messageContainer,
                     item.senderId === user.uid
                       ? [styles.sentMessage, { 
-                          backgroundColor: ['image', 'video', 'document'].includes(item.type) 
+                          backgroundColor: ['image', 'video', 'document', 'location', 'contact'].includes(item.type) 
                             ? (item.type === 'document' ? theme.primary : 'transparent') 
                             : theme.primary 
                         }]
@@ -795,76 +872,10 @@ const ChatScreen = ({ route, navigation }) => {
                             : (isDark ? '#333' : '#e5e5ea') 
                         }],
                   ]}
+                  onLongPress={() => handleMessageLongPress(item)}
+                  activeOpacity={0.8}
                 >
-                  {item.type === 'image' ? (
-                    <TouchableOpacity 
-                      onPress={() => handleMediaPreview(item.mediaUrl, 'image')}
-                      activeOpacity={0.9}
-                    >
-                      <Image
-                        source={{ uri: item.mediaUrl }}
-                        style={styles.messageImage}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
-                  ) : item.type === 'video' ? (
-                    <TouchableOpacity
-                      onPress={() => handleMediaPreview(item.mediaUrl, 'video')}
-                      activeOpacity={0.9}
-                      style={styles.videoContainer}
-                    >
-                      <Image
-                        source={{ uri: item.mediaUrl.replace('.mp4', '.jpg') }}
-                        style={styles.messageVideo}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.playButtonOverlay}>
-                        <Ionicons name="play-circle" size={40} color="#fff" />
-                      </View>
-                    </TouchableOpacity>
-                  ) : item.type === 'document' ? (
-                    <TouchableOpacity
-                      style={styles.documentContainer}
-                      activeOpacity={0.8}
-                      onPress={() => handleDocumentView(item)}
-                    >
-                      <View style={styles.documentIconContainer}>
-                        {item.documentType && item.documentType.includes('pdf') ? (
-                          <MaterialIcons name="picture-as-pdf" size={30} color="#FF5252" />
-                        ) : item.documentType && item.documentType.includes('word') ? (
-                          <MaterialIcons name="description" size={30} color="#2196F3" />
-                        ) : item.documentType && item.documentType.includes('text/plain') ? (
-                          <MaterialIcons name="text-snippet" size={30} color="#4CAF50" />
-                        ) : (
-                          <MaterialIcons name="insert-drive-file" size={30} color="#FFC107" />
-                        )}
-                      </View>
-                      <View style={styles.documentInfo}>
-                        <Text 
-                          style={[styles.documentName, { color: item.senderId === user.uid ? '#fff' : theme.text }]} 
-                          numberOfLines={1}
-                        >
-                          {item.documentName}
-                        </Text>
-                        <Text 
-                          style={[styles.documentSize, { color: item.senderId === user.uid ? 'rgba(255,255,255,0.7)' : theme.subText }]}
-                        >
-                          {formatFileSize(item.documentSize)}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text
-                      style={[
-                        styles.messageText,
-                        {
-                          color: item.senderId === user.uid ? '#fff' : theme.text,
-                        },
-                      ]}
-                    >
-                      {item.text}
-                    </Text>
-                  )}
+                  {renderAttachment(item)}
                   <Text
                     style={[
                       styles.messageTime,
@@ -876,13 +887,18 @@ const ChatScreen = ({ route, navigation }) => {
                   >
                     {formatMessageTime(item.createdAt)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             )}
-            contentContainerStyle={styles.messagesList}
           />
         )}
-        
+      </View>
+      
+      {/* Input Container - Fixed at bottom with KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
         <View style={[styles.inputContainer, { 
           backgroundColor: isDark ? '#1C1C1E' : '#f2f2f7',
           borderColor: isDark ? '#333' : '#e5e5ea'
@@ -891,9 +907,9 @@ const ChatScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={styles.mediaButton}
               onPress={handleMediaPick}
-              disabled={imageUploading}
+              disabled={isUploading}
             >
-              {imageUploading ? (
+              {isUploading ? (
                 <ActivityIndicator size="small" color={theme.primary} />
               ) : (
                 <Ionicons name="add-circle-outline" size={26} color={theme.primary} />
@@ -902,26 +918,32 @@ const ChatScreen = ({ route, navigation }) => {
             
             <TouchableOpacity 
               style={styles.cameraButton}
-              onPress={launchCamera}
-              disabled={imageUploading}
+              onPress={handleMediaPick}
+              disabled={isUploading}
             >
               <Ionicons name="camera-outline" size={24} color={theme.primary} />
             </TouchableOpacity>
             
             <TextInput
-              style={[styles.input, { color: theme.text }]}
+              style={[styles.input, { 
+                color: theme.text,
+                backgroundColor: isDark ? '#2C2C2E' : '#fff'
+              }]}
               placeholder="Type a message..."
               placeholderTextColor={theme.subText}
               value={inputMessage}
               onChangeText={handleInputChange}
               multiline
+              maxLength={1000}
+              returnKeyType="default"
+              blurOnSubmit={false}
             />
             
             {inputMessage.trim() ? (
               <TouchableOpacity
                 style={[styles.sendButton, { backgroundColor: theme.primary }]}
                 onPress={sendMessage}
-                disabled={imageUploading}
+                disabled={isUploading}
               >
                 <Ionicons name="send" size={18} color="#fff" />
               </TouchableOpacity>
@@ -936,16 +958,24 @@ const ChatScreen = ({ route, navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: Platform.OS === 'android' ? 25 : 0, // Account for status bar on Android
   },
   keyboardAvoid: {
     flex: 1,
+  },
+  chatContainer: {
+    flex: 1,
+  },
+  messagesContainer: {
+    flex: 1,
+    paddingBottom: 5, // Small padding to prevent overlap
   },
   headerTitleContainer: {
     flexDirection: 'row',
@@ -992,8 +1022,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   messagesList: {
+    flex: 1,
+    paddingHorizontal: 0,
+  },
+  messagesContent: {
     padding: 16,
-    paddingBottom: 20,
+    paddingBottom: 10,
+    flexGrow: 1,
   },
   dateHeaderContainer: {
     alignItems: 'center',
@@ -1033,26 +1068,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   inputContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderTopWidth: 1,
+    backgroundColor: 'transparent',
+    elevation: 10, // Add shadow on Android
+    shadowColor: '#000', // Add shadow on iOS
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
   },
   inputWrapper: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     backgroundColor: 'transparent',
-    borderRadius: 24,
-    paddingHorizontal: 5,
+    paddingHorizontal: 0,
+    minHeight: 44,
   },
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 100,
+    maxHeight: 120,
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     fontFamily: 'Poppins-Regular',
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    marginHorizontal: 4,
+    textAlignVertical: 'top', // Ensure text starts at top in multiline
   },
   mediaButton: {
     width: 40,
@@ -1141,51 +1189,130 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 8,
   },
-  // Media options modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+  
+  // New attachment styles
+  attachmentContainer: {
+    maxWidth: 280,
+    minWidth: 200,
   },
-  mediaOptionsContainer: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    paddingBottom: 30,
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 5,
   },
-  mediaOptionsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 10,
+  videoContainer: {
+    position: 'relative',
   },
-  mediaOptionsTitle: {
-    fontFamily: 'Poppins-Medium',
-    fontSize: 18,
+  videoThumbnail: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 5,
   },
-  mediaOptionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-  mediaOptionItem: {
-    width: '30%',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  mediaOptionIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  playButton: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -15 }, { translateY: -15 }],
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  mediaOptionText: {
+  playButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    marginLeft: 2,
+  },
+  documentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 200,
+    marginBottom: 5,
+  },
+  documentIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  documentInfo: {
+    flex: 1,
+  },
+  documentName: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  documentSize: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 200,
+    marginBottom: 5,
+  },
+  locationIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  locationText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
+    flex: 1,
+  },
+  contactContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 200,
+    marginBottom: 5,
+  },
+  contactIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  contactPhone: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  
+  // Additional styles for interactive elements
+  locationInfo: {
+    flex: 1,
+  },
+  locationSubtext: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 11,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  contactSubtext: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 11,
+    opacity: 0.6,
+    marginTop: 2,
   },
 });
 

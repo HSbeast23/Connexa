@@ -41,9 +41,9 @@ const SplashScreen = () => {
       } else {
         navigation.reset({
           index: 0,
-          routes: [{ 
+          routes: [{
             name: 'Profile',
-            params: { 
+            params: {
               isNewUser: true,
               email: user.email || '',
               displayName: user.displayName || '',
@@ -152,17 +152,22 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
     letterSpacing: 2,
-    marginBottom: 10,
+    marginBottom: 16,
+    textAlign: 'center',
+    lineHeight: 56,
   },
   underline: {
     height: 4,
+    width: '40%',
     backgroundColor: '#fff',
-    borderRadius: 2,
+    borderRadius: 4,
     shadowColor: '#fff',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 10,
     elevation: 5,
+    marginTop: 8,
+    marginBottom: 8,
   },
 });
 
