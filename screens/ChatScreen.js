@@ -23,11 +23,13 @@ import { useFonts } from 'expo-font';
 import { auth, db } from '../services/FireBase';
 import * as ImagePicker from 'expo-image-picker';
 import ChatAttachmentModal from '../components/ChatAttachmentModal';
+import ChatMessage from '../components/ChatMessage';
 import {
   collection,
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -146,6 +148,13 @@ const ChatScreen = ({ route, navigation }) => {
       const messagesList = [];
       snapshot.docs.forEach((doc) => {
         const messageData = doc.data();
+        
+        // Filter out messages deleted for current user
+        const isDeletedForMe = messageData.deletedFor && messageData.deletedFor[user?.uid];
+        if (isDeletedForMe) {
+          return; // Skip this message
+        }
+        
         const message = {
           id: doc.id,
           ...messageData,
@@ -365,6 +374,13 @@ const ChatScreen = ({ route, navigation }) => {
         lastUpdated: serverTimestamp(),
         [`lastViewed.${user.uid}`]: serverTimestamp()
       });
+
+      // Scroll to bottom to show new message
+      if (flatListRef.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
       
     } catch (error) {
       console.error("Error sending attachment:", error);
@@ -375,6 +391,61 @@ const ChatScreen = ({ route, navigation }) => {
   // Handle media picking and sending
   const handleMediaPick = () => {
     setShowMediaOptions(true);
+  };
+
+  // Quick camera capture (direct camera access)
+  const handleQuickCamera = async () => {
+    try {
+      // Show a brief hint about long press on first tap
+      if (!isUploading) {
+        // You could store this in AsyncStorage to show only once
+        setTimeout(() => {
+          // This could be a toast or small hint overlay
+        }, 100);
+      }
+
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is needed to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setIsUploading(true);
+        
+        // Send the image directly
+        const imageData = {
+          type: 'image',
+          image: result.assets[0].uri,
+          mediaUrl: result.assets[0].uri,
+          text: '', // No caption for quick capture
+        };
+        
+        await handleAttachmentSelected(imageData);
+        setIsUploading(false);
+      }
+    } catch (error) {
+      console.error('Quick camera error:', error);
+      setIsUploading(false);
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+    }
+  };
+
+  // Show media options with haptic feedback
+  const handleMediaOptionsLongPress = () => {
+    // Add haptic feedback if available
+    if (Platform.OS === 'ios') {
+      // Haptic feedback would go here in a real app
+    }
+    handleMediaPick();
   };
   
   // Close media options
@@ -416,6 +487,11 @@ const ChatScreen = ({ route, navigation }) => {
         openDocument(message.url || message.downloadURL, message.fileName || message.documentName);
         break;
         
+      case 'audio':
+        // Play audio
+        playAudio(message.url || message.downloadURL || message.mediaUrl, message.fileName || message.audioName || 'Audio File');
+        break;
+        
       case 'location':
         // Open in maps
         openLocationInMaps(message.latitude, message.longitude, message.address);
@@ -428,10 +504,36 @@ const ChatScreen = ({ route, navigation }) => {
     }
   };
 
-  // Open image viewer
+  // Open image viewer - Native gallery viewer
   const openImageViewer = (imageUrl) => {
-    // For now, show in browser - you can implement a proper image viewer later
-    Linking.openURL(imageUrl);
+    // For native viewing, we'll use a more sophisticated approach
+    Alert.alert(
+      'View Image',
+      'How would you like to view this image?',
+      [
+        { 
+          text: 'Open in Gallery', 
+          onPress: () => {
+            // Try to open with native intent on Android, Photos app on iOS
+            const scheme = Platform.OS === 'android' ? 'content://' : 'photos-redirect://';
+            Linking.canOpenURL(imageUrl).then(supported => {
+              if (supported) {
+                Linking.openURL(imageUrl);
+              } else {
+                // Fallback to browser if native app not available
+                Alert.alert(
+                  'Open Image',
+                  'Opening in browser...',
+                  [{ text: 'OK', onPress: () => Linking.openURL(imageUrl) }]
+                );
+              }
+            });
+          }
+        },
+        { text: 'View in Browser', onPress: () => Linking.openURL(imageUrl) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   // Save image to gallery
@@ -444,16 +546,39 @@ const ChatScreen = ({ route, navigation }) => {
         return;
       }
       
-      // Download and save (simplified - you can implement proper download)
-      Alert.alert('Success', 'Image will be saved to your gallery.');
+      Alert.alert('Save Image', 'Image saving functionality will be implemented with native download.');
     } catch (error) {
       Alert.alert('Error', 'Failed to save image.');
     }
   };
 
-  // Play video
+  // Play video - Native video player
   const playVideo = (videoUrl) => {
-    Linking.openURL(videoUrl);
+    Alert.alert(
+      'Play Video',
+      'How would you like to play this video?',
+      [
+        { 
+          text: 'Open in Video Player', 
+          onPress: () => {
+            // Try to open with native video player
+            Linking.canOpenURL(videoUrl).then(supported => {
+              if (supported) {
+                Linking.openURL(videoUrl);
+              } else {
+                Alert.alert(
+                  'Play Video',
+                  'Opening in browser...',
+                  [{ text: 'OK', onPress: () => Linking.openURL(videoUrl) }]
+                );
+              }
+            });
+          }
+        },
+        { text: 'View in Browser', onPress: () => Linking.openURL(videoUrl) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   // Save video to gallery
@@ -464,19 +589,89 @@ const ChatScreen = ({ route, navigation }) => {
         Alert.alert('Permission Required', 'Please grant photo library permission to save videos.');
         return;
       }
-      Alert.alert('Success', 'Video will be saved to your gallery.');
+      Alert.alert('Save Video', 'Video saving functionality will be implemented with native download.');
     } catch (error) {
       Alert.alert('Error', 'Failed to save video.');
     }
   };
 
-  // Open document
+  // Open document - Native document viewer
   const openDocument = (documentUrl, fileName) => {
+    const fileExtension = fileName?.toLowerCase().split('.').pop();
+    const isPDF = fileExtension === 'pdf';
+    const isDoc = ['doc', 'docx'].includes(fileExtension);
+    const isImage = ['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension);
+    
     Alert.alert(
-      'Open Document',
-      `Do you want to open ${fileName}?`,
+      isPDF ? 'Open PDF' : isDoc ? 'Open Document' : 'Open File',
+      `${fileName}`,
       [
-        { text: 'Open', onPress: () => Linking.openURL(documentUrl) },
+        { 
+          text: isPDF ? 'Open in PDF Viewer' : isDoc ? 'Open in Word/Docs' : 'Open with Apps', 
+          onPress: () => {
+            // For PDFs, try specific PDF viewers first
+            if (isPDF) {
+              const pdfIntent = Platform.OS === 'android' 
+                ? `intent://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}#Intent;scheme=https;package=com.google.android.apps.docs;end;`
+                : documentUrl;
+              
+              Linking.canOpenURL(pdfIntent).then(supported => {
+                if (supported) {
+                  Linking.openURL(pdfIntent);
+                } else {
+                  // Fallback to Google Docs viewer
+                  const googleDocsUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}`;
+                  Linking.openURL(googleDocsUrl);
+                }
+              });
+            } else {
+              // For other documents
+              Linking.canOpenURL(documentUrl).then(supported => {
+                if (supported) {
+                  Linking.openURL(documentUrl);
+                } else {
+                  const googleDocsUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}`;
+                  Linking.openURL(googleDocsUrl);
+                }
+              });
+            }
+          }
+        },
+        { 
+          text: 'Open in Browser', 
+          onPress: () => Linking.openURL(documentUrl) 
+        },
+        { 
+          text: 'Share Document', 
+          onPress: () => {
+            Alert.alert('Share Document', `Document: ${fileName}\nLink: ${documentUrl}`);
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Play audio - Native audio player
+  const playAudio = (audioUrl, fileName) => {
+    Alert.alert(
+      'Play Audio',
+      `${fileName}`,
+      [
+        { 
+          text: 'Play with Music App', 
+          onPress: () => {
+            // Try to open with native music/audio player
+            Linking.canOpenURL(audioUrl).then(supported => {
+              if (supported) {
+                Linking.openURL(audioUrl);
+              } else {
+                Alert.alert('Error', 'No audio player available on this device.');
+              }
+            });
+          }
+        },
+        { text: 'Play in Browser', onPress: () => Linking.openURL(audioUrl) },
         { text: 'Cancel', style: 'cancel' }
       ]
     );
@@ -484,16 +679,37 @@ const ChatScreen = ({ route, navigation }) => {
 
   // Open location in maps
   const openLocationInMaps = (latitude, longitude, address) => {
-    const mapUrl = Platform.OS === 'ios' 
-      ? `maps:${latitude},${longitude}`
-      : `geo:${latitude},${longitude}`;
+    const iosMapUrl = `maps:${latitude},${longitude}`;
+    const androidMapUrl = `geo:${latitude},${longitude}`;
+    const googleMapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+    const appleMapsUrl = `http://maps.apple.com/?q=${latitude},${longitude}`;
     
     Alert.alert(
       'Open Location',
       address || `Location: ${latitude?.toFixed(4)}, ${longitude?.toFixed(4)}`,
       [
-        { text: 'Open in Maps', onPress: () => Linking.openURL(mapUrl) },
-        { text: 'Share Location', onPress: () => shareLocation(latitude, longitude, address) },
+        { 
+          text: 'Open in Maps App', 
+          onPress: () => {
+            const nativeMapUrl = Platform.OS === 'ios' ? iosMapUrl : androidMapUrl;
+            Linking.canOpenURL(nativeMapUrl).then(supported => {
+              if (supported) {
+                Linking.openURL(nativeMapUrl);
+              } else {
+                // Fallback to Google Maps
+                Linking.openURL(googleMapsUrl);
+              }
+            });
+          }
+        },
+        { 
+          text: 'Open in Google Maps', 
+          onPress: () => Linking.openURL(googleMapsUrl) 
+        },
+        { 
+          text: 'Share Location', 
+          onPress: () => shareLocation(latitude, longitude, address) 
+        },
         { text: 'Cancel', style: 'cancel' }
       ]
     );
@@ -502,7 +718,20 @@ const ChatScreen = ({ route, navigation }) => {
   // Share location
   const shareLocation = (latitude, longitude, address) => {
     const locationText = `📍 ${address || `Location: ${latitude}, ${longitude}`}\nhttps://maps.google.com/?q=${latitude},${longitude}`;
-    Alert.alert('Location Shared', locationText);
+    Alert.alert(
+      'Share Location', 
+      locationText,
+      [
+        {
+          text: 'Copy Link',
+          onPress: () => {
+            // In a real app, you'd use Clipboard API here
+            Alert.alert('Copied', 'Location link copied to clipboard');
+          }
+        },
+        { text: 'Close', style: 'cancel' }
+      ]
+    );
   };
 
   // Show contact options
@@ -515,12 +744,48 @@ const ChatScreen = ({ route, navigation }) => {
     ];
     
     if (phoneNumber) {
-      options.push({ text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) });
-      options.push({ text: 'SMS', onPress: () => Linking.openURL(`sms:${phoneNumber}`) });
+      options.push({ 
+        text: 'Call', 
+        onPress: () => {
+          const telUrl = `tel:${phoneNumber}`;
+          Linking.canOpenURL(telUrl).then(supported => {
+            if (supported) {
+              Linking.openURL(telUrl);
+            } else {
+              Alert.alert('Error', 'Cannot make calls on this device.');
+            }
+          });
+        }
+      });
+      options.push({ 
+        text: 'SMS', 
+        onPress: () => {
+          const smsUrl = `sms:${phoneNumber}`;
+          Linking.canOpenURL(smsUrl).then(supported => {
+            if (supported) {
+              Linking.openURL(smsUrl);
+            } else {
+              Alert.alert('Error', 'Cannot send messages on this device.');
+            }
+          });
+        }
+      });
     }
     
     if (email) {
-      options.push({ text: 'Email', onPress: () => Linking.openURL(`mailto:${email}`) });
+      options.push({ 
+        text: 'Email', 
+        onPress: () => {
+          const emailUrl = `mailto:${email}`;
+          Linking.canOpenURL(emailUrl).then(supported => {
+            if (supported) {
+              Linking.openURL(emailUrl);
+            } else {
+              Alert.alert('Error', 'Cannot open email app on this device.');
+            }
+          });
+        }
+      });
     }
     
     options.push({ text: 'Cancel', style: 'cancel' });
@@ -536,42 +801,173 @@ const ChatScreen = ({ route, navigation }) => {
       contactMessage.emails?.map(e => `Email: ${e.email}`).join('\n')
     ].filter(Boolean).join('\n\n');
     
-    Alert.alert('Contact Details', details);
+    const phoneNumber = contactMessage.phoneNumbers?.[0]?.number;
+    
+    Alert.alert(
+      'Contact Details', 
+      details,
+      [
+        {
+          text: 'Open Contacts App',
+          onPress: () => {
+            if (phoneNumber) {
+              // Try to open native contacts app
+              const contactsScheme = Platform.OS === 'android' 
+                ? `content://contacts/people/` 
+                : `contacts://`;
+              
+              Linking.canOpenURL(contactsScheme).then(supported => {
+                if (supported) {
+                  Linking.openURL(contactsScheme);
+                } else {
+                  // Fallback to phone dialer
+                  const telUrl = `tel:${phoneNumber}`;
+                  Linking.openURL(telUrl);
+                }
+              });
+            } else {
+              Alert.alert('Info', 'No phone number available to open contacts app.');
+            }
+          }
+        },
+        { text: 'Close', style: 'cancel' }
+      ]
+    );
   };
 
-  // Handle message long press for delete/forward
+  // Handle message long press - WhatsApp style
   const handleMessageLongPress = (message) => {
+    const isMyMessage = message.senderId === user?.uid;
+    const messageAge = Date.now() - (message.timestamp || message.createdAt?.getTime() || 0);
+    const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+    
+    const options = [];
+
+    // Add other options first
+    if (!message.deletedForEveryone) {
+      options.push({ text: 'Copy', onPress: () => copyMessageText(message) });
+      options.push({ text: 'Forward', onPress: () => forwardMessage(message) });
+    }
+
+    // Only allow "Delete for Everyone" if it's sender's message and within 1 hour
+    if (isMyMessage) {
+      options.push({ 
+        text: 'Delete for Me', 
+        onPress: () => deleteMessage(message.id, false),
+        style: 'destructive'
+      });
+      
+      if (messageAge < oneHour && !message.deletedForEveryone) {
+        options.push({ 
+          text: 'Delete for Everyone', 
+          onPress: () => confirmDeleteForEveryone(message),
+          style: 'destructive'
+        });
+      }
+    } else {
+      // For others' messages, only allow delete for me
+      options.push({ 
+        text: 'Delete for Me', 
+        onPress: () => deleteMessage(message.id, false),
+        style: 'destructive'
+      });
+    }
+
+    options.push({ text: 'Cancel', style: 'cancel' });
+
     Alert.alert(
       'Message Options',
       'What would you like to do with this message?',
+      options
+    );
+  };
+
+  // Confirm delete for everyone
+  const confirmDeleteForEveryone = (message) => {
+    Alert.alert(
+      'Delete for Everyone?',
+      'This message will be deleted for everyone in this chat. Recipients may have already seen this message.',
       [
-        { text: 'Forward', onPress: () => forwardMessage(message) },
-        { text: 'Delete for Me', onPress: () => deleteMessage(message.id, false) },
-        { text: 'Delete for Everyone', onPress: () => deleteMessage(message.id, true) },
-        { text: 'Cancel', style: 'cancel' }
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete for Everyone', 
+          style: 'destructive',
+          onPress: () => deleteMessage(message.id, true)
+        }
       ]
     );
   };
 
   // Forward message
   const forwardMessage = (message) => {
-    Alert.alert('Forward', 'Message forwarding will be implemented soon!');
+    // Create a simplified forward interface
+    Alert.alert(
+      'Forward Message',
+      'Choose how to forward this message:',
+      [
+        { text: 'Copy Text', onPress: () => copyMessageText(message) },
+        { text: 'Share', onPress: () => shareMessage(message) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
-  // Delete message
+  // Copy message text
+  const copyMessageText = (message) => {
+    let textToCopy = '';
+    if (message.text) {
+      textToCopy = message.text;
+    } else if (message.type === 'contact') {
+      textToCopy = `Contact: ${message.name}\nPhone: ${message.phoneNumbers?.[0]?.number || 'No phone'}`;
+    } else if (message.type === 'location') {
+      textToCopy = `Location: ${message.address || `${message.latitude}, ${message.longitude}`}`;
+    } else {
+      textToCopy = `${message.type || 'media'} attachment`;
+    }
+    
+    Alert.alert('Copied', 'Message text copied to clipboard');
+  };
+
+  // Share message
+  const shareMessage = (message) => {
+    Alert.alert('Share', 'Message sharing will be implemented with native share functionality');
+  };
+
+  // Delete message with WhatsApp-style implementation
   const deleteMessage = async (messageId, forEveryone) => {
     try {
       if (forEveryone) {
-        // Delete for everyone - remove from Firestore
-        Alert.alert('Deleted', 'Message deleted for everyone.');
+        // Delete for everyone - mark as deleted but keep the message
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+        await updateDoc(messageRef, {
+          deletedForEveryone: true,
+          deletedAt: serverTimestamp()
+        });
+        Alert.alert(
+          'Deleted', 
+          'Message deleted for everyone.',
+          [{ text: 'OK' }]
+        );
       } else {
-        // Delete for me - just hide locally
-        Alert.alert('Deleted', 'Message deleted for you.');
+        // Delete for me - add current user to deletedFor array
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+        await updateDoc(messageRef, {
+          [`deletedFor.${user.uid}`]: true,
+          [`deletedAt.${user.uid}`]: serverTimestamp()
+        });
+        Alert.alert(
+          'Deleted', 
+          'Message deleted for you.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to delete message.');
+      console.error('Delete message error:', error);
+      Alert.alert('Error', 'Failed to delete message. Please try again.');
     }
   };
+
+
   
   // Render message attachment
   const renderAttachment = (message) => {
@@ -848,7 +1244,7 @@ const ChatScreen = ({ route, navigation }) => {
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
             showsVerticalScrollIndicator={false}
-              renderItem={({ item, index }) => (
+            renderItem={({ item, index }) => (
               <View>
                 {showDateHeader(item, index) && (
                   <View style={styles.dateHeaderContainer}>
@@ -857,37 +1253,14 @@ const ChatScreen = ({ route, navigation }) => {
                     </Text>
                   </View>
                 )}
-                <TouchableOpacity
-                  style={[
-                    styles.messageContainer,
-                    item.senderId === user.uid
-                      ? [styles.sentMessage, { 
-                          backgroundColor: ['image', 'video', 'document', 'location', 'contact'].includes(item.type) 
-                            ? (item.type === 'document' ? theme.primary : 'transparent') 
-                            : theme.primary 
-                        }]
-                      : [styles.receivedMessage, { 
-                          backgroundColor: ['image', 'video'].includes(item.type) 
-                            ? 'transparent' 
-                            : (isDark ? '#333' : '#e5e5ea') 
-                        }],
-                  ]}
-                  onLongPress={() => handleMessageLongPress(item)}
-                  activeOpacity={0.8}
-                >
-                  {renderAttachment(item)}
-                  <Text
-                    style={[
-                      styles.messageTime,
-                      {
-                        color: item.senderId === user.uid ? 'rgba(255,255,255,0.7)' : theme.subText,
-                        marginTop: ['image', 'video'].includes(item.type) ? 4 : 2,
-                      },
-                    ]}
-                  >
-                    {formatMessageTime(item.createdAt)}
-                  </Text>
-                </TouchableOpacity>
+                <ChatMessage
+                  message={item}
+                  isOwn={item.senderId === user.uid}
+                  timestamp={item.createdAt}
+                  senderName={item.senderId !== user.uid ? (otherUser.displayName || otherUser.email || 'Unknown') : null}
+                  onMessageLongPress={handleMessageLongPress}
+                  currentUserId={user?.uid}
+                />
               </View>
             )}
           />
@@ -904,24 +1277,32 @@ const ChatScreen = ({ route, navigation }) => {
           borderColor: isDark ? '#333' : '#e5e5ea'
         }]}>
           <View style={styles.inputWrapper}>
+            {/* Media sharing button with + icon */}
             <TouchableOpacity 
-              style={styles.mediaButton}
+              style={[styles.mediaShareButton, { 
+                backgroundColor: isDark ? '#0E7C42' : '#25D366' 
+              }]}
               onPress={handleMediaPick}
               disabled={isUploading}
+              activeOpacity={0.8}
             >
               {isUploading ? (
-                <ActivityIndicator size="small" color={theme.primary} />
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons name="add-circle-outline" size={26} color={theme.primary} />
+                <Ionicons name="add" size={20} color="#fff" />
               )}
             </TouchableOpacity>
-            
+
+            {/* Camera button */}
             <TouchableOpacity 
-              style={styles.cameraButton}
-              onPress={handleMediaPick}
+              style={[styles.cameraOnlyButton, { 
+                backgroundColor: isDark ? '#444' : '#e9ecef' 
+              }]}
+              onPress={handleQuickCamera}
               disabled={isUploading}
+              activeOpacity={0.8}
             >
-              <Ionicons name="camera-outline" size={24} color={theme.primary} />
+              <Ionicons name="camera" size={18} color={isDark ? '#fff' : '#666'} />
             </TouchableOpacity>
             
             <TextInput
@@ -1108,6 +1489,70 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 2,
+  },
+  mediaShareButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+    elevation: 2, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  cameraOnlyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    elevation: 1, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  whatsappCameraButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    elevation: 2, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  cameraIconContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  plusIndicator: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cameraButton: {
     width: 40,

@@ -10,8 +10,12 @@ import {
   Dimensions,
   ActivityIndicator,
   Linking,
+  FlatList,
+  TextInput,
+  SafeAreaView,
+  Image,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
@@ -30,6 +34,10 @@ const ChatAttachmentModal = ({
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [contacts, setContacts] = useState([]);
+  const [filteredContacts, setFilteredContacts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Animation values
   const slideAnim = React.useRef(new Animated.Value(height)).current;
@@ -324,7 +332,7 @@ const ChatAttachmentModal = ({
     }
   };
 
-  // Handle contacts
+  // Handle contacts - Show proper contact picker
   const handleContact = async () => {
     try {
       const { status } = await Contacts.requestPermissionsAsync();
@@ -342,7 +350,8 @@ const ChatAttachmentModal = ({
           Contacts.Fields.FirstName,
           Contacts.Fields.LastName,
           Contacts.Fields.PhoneNumbers,
-          Contacts.Fields.Emails
+          Contacts.Fields.Emails,
+          Contacts.Fields.Image,
         ],
         sort: Contacts.SortTypes.FirstName,
       });
@@ -366,7 +375,8 @@ const ChatAttachmentModal = ({
         
         return {
           ...contact,
-          displayName: displayName
+          displayName: displayName,
+          searchText: displayName.toLowerCase() + (contact.phoneNumbers?.[0]?.number || '').replace(/\D/g, '')
         };
       });
 
@@ -375,7 +385,9 @@ const ChatAttachmentModal = ({
         return;
       }
 
-      showContactSelection(validContacts);
+      setContacts(validContacts);
+      setFilteredContacts(validContacts);
+      setShowContactPicker(true);
 
     } catch (error) {
       setIsUploading(false);
@@ -385,85 +397,140 @@ const ChatAttachmentModal = ({
     }
   };
 
-  // Show contact selection
-  const showContactSelection = (contacts) => {
-    Alert.alert(
-      'Select Contact',
-      `Choose a contact to share (${contacts.length} contacts found):`,
-      [
-        ...contacts.slice(0, 10).map((contact) => ({
-          text: `${contact.displayName} (${contact.phoneNumbers[0].number})`,
-          onPress: () => {
-            const attachmentData = {
-              type: 'contact',
-              name: contact.displayName,
-              phoneNumbers: contact.phoneNumbers || [],
-              emails: contact.emails || [],
-              timestamp: Date.now(),
-            };
-            onAttachmentSelected(attachmentData);
-            onClose();
-          }
-        })),
-        ...(contacts.length > 10 ? [{
-          text: `📋 View All ${contacts.length} Contacts`,
-          onPress: () => showAllContacts(contacts)
-        }] : []),
-        { text: 'Cancel', style: 'cancel' }
-      ],
-      { cancelable: true }
+  // Filter contacts based on search
+  const filterContacts = (query) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredContacts(contacts);
+      return;
+    }
+
+    const filtered = contacts.filter(contact => 
+      contact.searchText.includes(query.toLowerCase().replace(/\D/g, ''))
     );
+    setFilteredContacts(filtered);
   };
 
-  // Show all contacts in batches
-  const showAllContacts = (contacts) => {
-    const batchSize = 15;
-
-    const showBatch = (startIndex) => {
-      const endIndex = Math.min(startIndex + batchSize, contacts.length);
-      const batch = contacts.slice(startIndex, endIndex);
-      
-      const options = batch.map((contact) => ({
-        text: `${contact.displayName} (${contact.phoneNumbers[0].number})`,
-        onPress: () => {
-          const attachmentData = {
-            type: 'contact',
-            name: contact.displayName,
-            phoneNumbers: contact.phoneNumbers || [],
-            emails: contact.emails || [],
-            timestamp: Date.now(),
-          };
-          onAttachmentSelected(attachmentData);
-          onClose();
-        }
-      }));
-
-      if (endIndex < contacts.length) {
-        options.push({
-          text: `📄 Next ${Math.min(batchSize, contacts.length - endIndex)} Contacts`,
-          onPress: () => showBatch(endIndex)
-        });
-      }
-      
-      if (startIndex > 0) {
-        options.push({
-          text: '⬅️ Previous Contacts',
-          onPress: () => showBatch(Math.max(0, startIndex - batchSize))
-        });
-      }
-
-      options.push({ text: 'Cancel', style: 'cancel' });
-
-      Alert.alert(
-        `Contacts ${startIndex + 1}-${endIndex} of ${contacts.length}`,
-        'Select a contact to share:',
-        options,
-        { cancelable: true }
-      );
+  // Select contact
+  const selectContact = (contact) => {
+    const attachmentData = {
+      type: 'contact',
+      name: contact.displayName,
+      phoneNumbers: contact.phoneNumbers || [],
+      emails: contact.emails || [],
+      image: contact.image,
+      timestamp: Date.now(),
     };
-
-    showBatch(0);
+    
+    onAttachmentSelected(attachmentData);
+    setShowContactPicker(false);
+    setSearchQuery('');
+    onClose();
   };
+
+  // Close contact picker
+  const closeContactPicker = () => {
+    setShowContactPicker(false);
+    setSearchQuery('');
+    setContacts([]);
+    setFilteredContacts([]);
+  };
+
+  // Render contact item
+  const renderContactItem = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.contactItem}
+      onPress={() => selectContact(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.contactAvatar}>
+        {item.image ? (
+          <Image source={{ uri: item.image.uri }} style={styles.contactImage} />
+        ) : (
+          <View style={styles.contactInitials}>
+            <Text style={styles.contactInitialsText}>
+              {item.displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+      
+      <View style={styles.contactInfo}>
+        <Text style={styles.contactName} numberOfLines={1}>
+          {item.displayName}
+        </Text>
+        <Text style={styles.contactPhone} numberOfLines={1}>
+          {item.phoneNumbers?.[0]?.number || 'No phone number'}
+        </Text>
+      </View>
+      
+      <Ionicons name="chevron-forward" size={20} color="#c7c7cc" />
+    </TouchableOpacity>
+  );
+
+  // Contact Picker Modal
+  const ContactPickerModal = () => (
+    <Modal
+      visible={showContactPicker}
+      animationType="slide"
+      presentationStyle="formSheet"
+    >
+      <SafeAreaView style={styles.contactPickerContainer}>
+        {/* Header */}
+        <View style={styles.contactPickerHeader}>
+          <TouchableOpacity onPress={closeContactPicker}>
+            <Text style={styles.cancelButton}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.contactPickerTitle}>Select Contact</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#8e8e93" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts..."
+            placeholderTextColor="#8e8e93"
+            value={searchQuery}
+            onChangeText={filterContacts}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => filterContacts('')}>
+              <Ionicons name="close-circle" size={20} color="#8e8e93" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Contact Count */}
+        <View style={styles.contactCount}>
+          <Text style={styles.contactCountText}>
+            {filteredContacts.length} of {contacts.length} contacts
+          </Text>
+        </View>
+
+        {/* Contacts List */}
+        <FlatList
+          data={filteredContacts}
+          keyExtractor={(item) => item.id || item.displayName}
+          renderItem={renderContactItem}
+          style={styles.contactsList}
+          showsVerticalScrollIndicator={true}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="people-outline" size={50} color="#c7c7cc" />
+              <Text style={styles.emptyText}>No contacts found</Text>
+              <Text style={styles.emptySubtext}>
+                {searchQuery ? 'Try searching with a different term' : 'No contacts available'}
+              </Text>
+            </View>
+          )}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
 
   // Attachment options
   const attachmentOptions = [
@@ -517,63 +584,69 @@ const ChatAttachmentModal = ({
     }
   };
 
-  if (!visible) return null;
+  if (!visible && !showContactPicker) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="none"
-      onRequestClose={handleClose}
-    >
-      <Animated.View style={[styles.overlay, { opacity: opacityAnim }]}>
-        <TouchableOpacity
-          style={styles.overlayTouch}
-          activeOpacity={1}
-          onPress={handleClose}
-        />
-        
-        <Animated.View
-          style={[
-            styles.modalContainer,
-            {
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          {isUploading && (
-            <View style={styles.uploadContainer}>
-              <ActivityIndicator size="small" color="#007AFF" />
-              <Text style={styles.uploadText}>{uploadProgress}</Text>
-            </View>
-          )}
+    <>
+      {/* Contact Picker Modal */}
+      <ContactPickerModal />
 
-          <View style={styles.optionsContainer}>
-            <View style={styles.optionsGrid}>
-              {attachmentOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.id}
-                  style={styles.optionItem}
-                  onPress={option.onPress}
-                  disabled={isUploading}
-                >
-                  <View style={[styles.optionIcon, { backgroundColor: option.color }]}>
-                    <MaterialIcons
-                      name={option.icon}
-                      size={24}
-                      color="white"
-                    />
-                  </View>
-                  <Text style={styles.optionText}>{option.title}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+      {/* Main Attachment Modal */}
+      <Modal
+        visible={visible && !showContactPicker}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleClose}
+      >
+        <Animated.View style={[styles.overlay, { opacity: opacityAnim }]}>
+          <TouchableOpacity
+            style={styles.overlayTouch}
+            activeOpacity={1}
+            onPress={handleClose}
+          />
+          
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            {isUploading && (
+              <View style={styles.uploadContainer}>
+                <ActivityIndicator size="small" color="#007AFF" />
+                <Text style={styles.uploadText}>{uploadProgress}</Text>
+              </View>
+            )}
 
-          <View style={styles.safeArea} />
+            <View style={styles.optionsContainer}>
+              <View style={styles.optionsGrid}>
+                {attachmentOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={styles.optionItem}
+                    onPress={option.onPress}
+                    disabled={isUploading}
+                  >
+                    <View style={[styles.optionIcon, { backgroundColor: option.color }]}>
+                      <MaterialIcons
+                        name={option.icon}
+                        size={24}
+                        color="white"
+                      />
+                    </View>
+                    <Text style={styles.optionText}>{option.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.safeArea} />
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
-    </Modal>
+      </Modal>
+    </>
   );
 };
 
@@ -633,6 +706,130 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     height: 30,
+  },
+
+  // Contact Picker Styles
+  contactPickerContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  contactPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#c7c7cc',
+  },
+  cancelButton: {
+    fontSize: 17,
+    color: '#007AFF',
+    fontWeight: '400',
+  },
+  contactPickerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f2f2f7',
+    marginHorizontal: 15,
+    marginTop: 15,
+    marginBottom: 10,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+    paddingVertical: 0,
+  },
+  contactCount: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  contactCountText: {
+    fontSize: 13,
+    color: '#8e8e93',
+    fontWeight: '400',
+  },
+  contactsList: {
+    flex: 1,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f2f2f7',
+    backgroundColor: '#fff',
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contactImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  contactInitials: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contactInitialsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: 17,
+    fontWeight: '400',
+    color: '#000',
+    marginBottom: 2,
+  },
+  contactPhone: {
+    fontSize: 14,
+    color: '#8e8e93',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#8e8e93',
+    marginTop: 15,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#c7c7cc',
+    marginTop: 5,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
 });
 
