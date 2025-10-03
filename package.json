@@ -13,7 +13,7 @@
     "@react-navigation/bottom-tabs": "^7.4.6",
     "@react-navigation/native": "^7.1.17",
     "@react-navigation/native-stack": "^7.3.25",
-    "expo": "~53.0.22",
+    "expo": "^54.0.10",
     "expo-app-loading": "^2.1.1",
     "expo-av": "~15.1.7",
     "expo-barcode-scanner": "^13.0.1",
